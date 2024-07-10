@@ -28,9 +28,16 @@ public class AuthorsController : BaseController
 	[ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ErrorResponse))]
 	[ResponseCache(VaryByQueryKeys = new[] { "q", "before", "limit" }, Location = ResponseCacheLocation.Any,
 		Duration = 3600)]
-	public IActionResult GetAll([FromQuery] string? q = null, [FromQuery] long? before = null,
+	public async Task<IActionResult> GetAll([FromServices] ApplicationRequestContext context, CancellationToken cancellationToken = default,
+		[FromQuery] string? q = null, [FromQuery] long? before = null,
 		[FromQuery] int? limit = null)
 	{
+
+		if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+		{
+			return Ok(new AuthorsResponse(new List<SearchResultAuthor>()));
+		}
+
 		const int maxLimit = 1000;
 
 		IQueryable<Author> packages = _db.Authors
@@ -63,15 +70,16 @@ public class AuthorsController : BaseController
 	[HttpGet("{username}")]
 	[ProducesResponseType(StatusCodes.Status200OK, Type = typeof(AuthorDto))]
 	[ProducesResponseType(StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> Get(string username, CancellationToken cancellationToken = default)
+	public async Task<IActionResult> Get(string username,
+		[FromServices] ApplicationRequestContext context, CancellationToken cancellationToken = default)
 	{
+		await context.RequireAuthorAsync(User, _db, cancellationToken);
 		using (_logger.BeginScope(new Dictionary<string, object>
 		{
 			["AuthorUsername"] = username,
 		}))
 		{
 			var author = await _db.Authors.FirstOrDefaultAsync(a => a.UserName == username, cancellationToken);
-
 			return author is null ? NotFound() : Ok(AuthorDto.FromAuthor(author));
 		}
 	}
@@ -112,8 +120,13 @@ public class AuthorsController : BaseController
 	[HttpGet("{username}/packages")]
 	[ProducesResponseType(StatusCodes.Status200OK, Type = typeof(AuthorPackagesResponse))]
 	[ProducesResponseType(StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetPackages(string username, CancellationToken cancellationToken = default)
+	public async Task<IActionResult> GetPackages(string username,
+		[FromServices] ApplicationRequestContext context, CancellationToken cancellationToken = default)
 	{
+		if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+		{
+			return Ok(new AuthorPackagesResponse(new List<PackageDto>()));
+		}
 		var author = await _db.Authors
 			.Where(a => a.UserName == username)
 			.Include(a => a.Packages)

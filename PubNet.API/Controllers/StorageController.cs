@@ -52,9 +52,11 @@ public class StorageController : BaseController, IUploadEndpointGenerator
 	[ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ErrorResponse))]
 	[ProducesResponseType(StatusCodes.Status411LengthRequired, Type = typeof(ErrorResponse))]
 	[ProducesResponseType(StatusCodes.Status413PayloadTooLarge, Type = typeof(ErrorResponse))]
-	public async Task<IActionResult> Upload()
+	public async Task<IActionResult> Upload([FromServices] ApplicationRequestContext context)
 	{
 		const long maxUploadSize = 100_000_000; // 100 MB
+
+		Author requestAuthor = await context.RequireAuthorAsync(User, _db);
 
 		var size = Request.Headers.ContentLength;
 		switch (size)
@@ -77,6 +79,8 @@ public class StorageController : BaseController, IUploadEndpointGenerator
 		var author = await _db.Authors.FindAsync(authorId);
 		if (author is null)
 			return BadRequest(ErrorResponse.InvalidAuthorId);
+		if (requestAuthor.Id != author.Id)
+			return Unauthorized(ErrorResponse.UsernameMismatch);
 
 		var pendingId = Guid.NewGuid();
 		var tempFile = Path.GetTempPath() + pendingId + ".tar.gz";
@@ -123,8 +127,11 @@ public class StorageController : BaseController, IUploadEndpointGenerator
 	[ProducesResponseType(StatusCodes.Status422UnprocessableEntity, Type = typeof(ErrorResponse))]
 	[ProducesResponseType(StatusCodes.Status424FailedDependency, Type = typeof(ErrorResponse))]
 	public async Task<IActionResult> FinalizeUpload([FromQuery] string? pendingId,
+		[FromServices] ApplicationRequestContext context,
 		CancellationToken cancellationToken = default)
 	{
+		Author requestAuthor = await context.RequireAuthorAsync(User, _db, cancellationToken);
+
 		if (!_endpointHelper.ValidateSignature(Request.QueryString.ToString()))
 			return BadRequest(ErrorResponse.InvalidSignedUrl);
 

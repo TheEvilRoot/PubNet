@@ -16,6 +16,23 @@ public class ApplicationRequestContext
 	private static InvalidCredentialException MissingAuthentication => new(
 		"Missing authentication. Acquire a Bearer token at [POST /authentication/login] and send it in the 'Authenticate' header.");
 
+	public async Task<Author?> OptionalAuthorAsync(ClaimsPrincipal user, PubNetContext db,
+		CancellationToken cancellationToken = default)
+	{
+		if (Author is not null)
+			return Author;
+
+		var idStr = user.FindFirstValue("id");
+		if (idStr is null || !int.TryParse(idStr, out var id))
+			return null;
+
+		var author = await db.Authors.FindAsync(new object?[] { id }, cancellationToken);
+		if (author is null)
+			return null;
+
+		return Author = author;
+	}
+
 	public async Task<Author> RequireAuthorAsync(ClaimsPrincipal user, PubNetContext db,
 		CancellationToken cancellationToken = default)
 	{

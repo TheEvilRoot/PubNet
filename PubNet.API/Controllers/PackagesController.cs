@@ -39,9 +39,14 @@ public class PackagesController : BaseController
 	[ProducesResponseType(StatusCodes.Status200OK, Type = typeof(SearchPackagesResponse))]
 	[ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ErrorResponse))]
 	[ResponseCache(VaryByQueryKeys = new[] { "q", "before", "limit" }, Location = ResponseCacheLocation.Any, Duration = 60 * 60)]
-	public IActionResult Get([FromQuery] string? q = null, [FromQuery] long? before = null, [FromQuery] int? limit = null)
+	public async  Task<IActionResult> Get([FromServices] ApplicationRequestContext context, CancellationToken cancellationToken = default, [FromQuery] string? q = null, [FromQuery] long? before = null, [FromQuery] int? limit = null)
 	{
 		const int maxLimit = 1000;
+
+		if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+		{
+			return Ok(new SearchPackagesResponse(new List<SearchResultPackage>()));
+		}
 
 		IQueryable<Package> packages = _db.Packages.OrderByDescending(p => p.Latest!.PublishedAtUtc);
 
@@ -70,13 +75,19 @@ public class PackagesController : BaseController
 	[ProducesResponseType(StatusCodes.Status200OK, Type = typeof(PackageDto))]
 	[ProducesResponseType(StatusCodes.Status404NotFound)]
 	[ResponseCache(VaryByQueryKeys = new[] { "includeAuthor" }, Location = ResponseCacheLocation.Any, Duration = 60 * 10)]
-	public async Task<IActionResult> GetByName(string name, [FromQuery] bool includeAuthor = false, CancellationToken cancellationToken = default)
+	public async Task<IActionResult> GetByName(string name, [FromServices] ApplicationRequestContext context,
+		[FromQuery] bool includeAuthor = false, CancellationToken cancellationToken = default)
 	{
 		using (_logger.BeginScope(new Dictionary<string, object>
 		{
 			["PackageName"] = name,
 		}))
 		{
+			if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+			{
+				return NotFound();
+			}
+
 			var packageQuery = _db.Packages
 				.Include(p => p.Versions)
 				.Where(p => p.Name == name);
@@ -199,13 +210,20 @@ public class PackagesController : BaseController
 	[ProducesResponseType(StatusCodes.Status200OK, Type = typeof(PackageVersionDto))]
 	[ProducesResponseType(StatusCodes.Status404NotFound)]
 	[ResponseCache(Duration = 60 * 10, Location = ResponseCacheLocation.Any)]
-	public async Task<IActionResult> GetVersion(string name, string version, CancellationToken cancellationToken = default)
+	public async Task<IActionResult> GetVersion(string name, string version,
+		[FromServices] ApplicationRequestContext context, CancellationToken cancellationToken = default)
 	{
 		using (_logger.BeginScope(new Dictionary<string, object>
 		{
 			["PackageName"] = name,
 		}))
 		{
+			if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+			{
+				return NotFound();
+			}
+
+
 			var package = await _db.Packages
 				.Where(p => p.Name == name)
 				.Include(p => p.Versions)
@@ -235,13 +253,19 @@ public class PackagesController : BaseController
 	[ProducesResponseType(StatusCodes.Status200OK, Type = typeof(PackageVersionAnalysisDto))]
 	[ProducesResponseType(StatusCodes.Status404NotFound)]
 	[ResponseCache(VaryByQueryKeys = new[] { "includeReadme" }, Duration = 60 * 60, Location = ResponseCacheLocation.Any)]
-	public async Task<IActionResult> GetVersionAnalysis(string name, string version, [FromQuery] bool includeReadme = false, CancellationToken cancellationToken = default)
+	public async Task<IActionResult> GetVersionAnalysis(string name, string version, [FromServices] ApplicationRequestContext context,
+		[FromQuery] bool includeReadme = false,
+		CancellationToken cancellationToken = default)
 	{
 		using (_logger.BeginScope(new Dictionary<string, object>
 		{
 			["PackageName"] = name,
 		}))
 		{
+			if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+			{
+				return NotFound();
+			}
 			var package = await _db.Packages
 				.Where(p => p.Name == name)
 				.Include(p => p.Versions)
@@ -373,8 +397,13 @@ public class PackagesController : BaseController
 	[ProducesResponseType(StatusCodes.Status200OK, Type = typeof(FileResult))]
 	[ProducesResponseType(StatusCodes.Status404NotFound)]
 	[ResponseCache(Duration = 60 * 10, Location = ResponseCacheLocation.Any)]
-	public async Task<IActionResult> GetVersionArchive(string name, string version, CancellationToken cancellationToken = default)
+	public async Task<IActionResult> GetVersionArchive(string name, string version,
+		[FromServices] ApplicationRequestContext context, CancellationToken cancellationToken = default)
 	{
+		if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+		{
+			return NotFound();
+		}
 		try
 		{
 			var stream = _storageProvider.ReadArchive(name, version);
@@ -409,8 +438,14 @@ public class PackagesController : BaseController
 	[ProducesResponseType(StatusCodes.Status200OK)]
 	[ProducesResponseType(StatusCodes.Status404NotFound)]
 	[ResponseCache(Duration = 60 * 10, Location = ResponseCacheLocation.Any)]
-	public async Task<IActionResult> GetVersionDocsFile(string name, string version, string path, CancellationToken cancellationToken = default)
+	public async Task<IActionResult> GetVersionDocsFile(string name, string version, string path,
+		[FromServices] ApplicationRequestContext context, CancellationToken cancellationToken = default)
 	{
+		if (await context.OptionalAuthorAsync(User, _db, cancellationToken) == null)
+		{
+			return NotFound();
+		}
+
 		var localPath = await _storageProvider.GetDocsPath(name, version, cancellationToken);
 
 		var notFoundPage = Path.Combine(localPath, "__404error.html");
